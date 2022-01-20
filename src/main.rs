@@ -11,7 +11,7 @@ struct Unit {
 
 impl fmt::Display for Unit {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let expression: Vec<String> = vec![(self.c, "* X^0"), (self.b, "* X^1"), (self.a, "* X^2")]
+        let expression: String = vec![(self.c, "* X^0"), (self.b, "* X^1"), (self.a, "* X^2")]
             .into_iter()
             .map(|(x, y)| {
                 if x == 0.0 {
@@ -25,10 +25,8 @@ impl fmt::Display for Unit {
             .collect();
         write!(
             f,
-            "{} {} {} = 0",
-            expression[0].trim_start_matches("+ "),
-            expression[1],
-            expression[2]
+            "{} = 0",
+            expression.trim_start_matches("+ "),
         )
     }
 }
@@ -97,13 +95,24 @@ fn remove_whitespace(s: &mut String) {
 }
 
 fn solve(data: Unit){
-
+    let delta = data.b * data.b - 4.0 * data.a * data.c;
+    if delta < 0.0 {
+        println!("Discriminant is negative, there is no solution.");
+    } else if delta == 0.0 {
+        println!("Discriminant is zero, the one solution is:\n{}", -data.b / (2.0 * data.a));
+    } else {
+        let solution1 = (-data.b + delta.sqrt())/ (2.0 * data.a);
+        let solution2 = (-data.b - delta.sqrt())/ (2.0 * data.a);
+        println!("Discriminant is strictly positive, the two solutions are:\n{}\n{}", solution1, solution2)
+    }
 }
 
 fn main() {
+    assert!(0.00 ==  -0.0);
     // let args: Vec<String> = env::args().collect();
     // let mut input : String = args[1].to_string();
-    let mut input = "5 * X^0 + 4 * X^1 - 9.3 * X^2= 1 * X^0".to_string();
+    let mut input = "4 * X^1 - 9.3 * X^2= 1 * X^1".to_string();
+    // let mut input = "5 * X^0 + 4 * X^1 - 9.3 * X^2= 1 * X^0".to_string();
     remove_whitespace(&mut input);
     let data = reduce(input);
     solve(data);
