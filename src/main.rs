@@ -1,12 +1,15 @@
+use float_pretty_print::PrettyPrintFloat;
 use lazy_static::lazy_static;
-use regex::{Captures, Regex};
+use regex::Regex;
+use std::env;
 use std::fmt;
 
-// Ex: "5 * X^0 + 4 * X^1 - 9.3 * X^2"  => "c * X^0 + b * X^1 + a * X^2
+
 struct Unit {
     a: f64,
     b: f64,
     c: f64,
+    other: u64,
 }
 
 impl fmt::Display for Unit {
@@ -23,52 +26,53 @@ impl fmt::Display for Unit {
                 }
             })
             .collect();
-        write!(
-            f,
-            "{} = 0",
-            expression.trim_start_matches("+ "),
-        )
+        write!(f, "{} = 0", expression.trim_start_matches("+ "),)
     }
 }
 
-fn reduce(expression: String) -> Unit {
+fn reduce(expression: String) -> Result<Unit, &'static str> {
     let (left, right) = match expression.split_once("=") {
         None => {
             panic!("Wrong input: No '=' in expression")
         }
         Some((x, y)) => (x.trim(), y.trim()),
     };
-    let left_unit = extract_coefficients(left);
-    let right_unit = extract_coefficients(right);
+    let left_unit = extract_coefficients(left)?;
+    let right_unit = extract_coefficients(right)?;
     let reduced_unit = Unit {
         a: left_unit.a - right_unit.a,
         b: left_unit.b - right_unit.b,
         c: left_unit.c - right_unit.c,
+        other: left_unit.other - right_unit.other,
+
     };
     let degree = {
-        if reduced_unit.a != 0.0 {
-            "2"
+        if reduced_unit.other != 0 {
+            reduced_unit.other
+        }else if reduced_unit.a != 0.0 {
+            2
         } else if reduced_unit.b != 0.0 {
-            "1"
+            1
         } else {
-            "0"
+            0
         }
     };
+
     println!(
         "Reduced form: {}\nPolynomial degree: {}",
         reduced_unit, degree
     );
-    reduced_unit
+    if degree > 2 {
+        return Err("The polynomial degree is stricly greater than 2, I can't solve.");
+    }
+    Ok(reduced_unit)
 }
 
-fn get_float(caps: &Captures, name: &str) -> f64 {
-    let coefficient = caps.name(name).map_or("0", |m| m.as_str());
-    let num = coefficient.parse::<f64>().unwrap();
-    // println!("coefff:{}, nb:{}", coefficient, num);
-    num
-}
+// fn get_float(caps: &Captures, name: &str) -> f64 {
+//     caps.name(name).map_or(0.0, |m| m.as_str().parse::<f64>().unwrap())
+// }
 
-fn extract_coefficients(expression: &str) -> Unit {
+fn extract_coefficients(expression: &str) -> Result<Unit, &'static str> {
     lazy_static! {
         static ref RE: Regex = Regex::new(
             r#"(?x)
@@ -76,44 +80,81 @@ fn extract_coefficients(expression: &str) -> Unit {
             ((?P<c>[-]?\d+\.?\d*)[*]X\^0)?
             ((?P<b>[+-]?\d+\.?\d*)[*]X\^1)?
             ((?P<a>[+-]?\d+\.?\d*)[*]X\^2)?
+            ([+-]?\d+\.?\d*[*]X\^(?P<other>\d+))?
             $
             "#
         )
         .unwrap();
     }
-    let caps = RE.captures(expression).unwrap();
-    let unit = Unit {
-        c: get_float(&caps, "c"),
-        b: get_float(&caps, "b"),
-        a: get_float(&caps, "a"),
-    };
-    unit
+    match RE.captures(expression) {
+        None => Err("wrong expression, nothing captured"),
+        Some(caps) => {
+            let unit = Unit {
+                c: caps.name("c").map_or(0.0, |m| m.as_str().parse::<f64>().unwrap()),
+                b: caps.name("b").map_or(0.0, |m| m.as_str().parse::<f64>().unwrap()),
+                a: caps.name("a").map_or(0.0, |m| m.as_str().parse::<f64>().unwrap()),
+                other: caps.name("other").map_or(0, |m| m.as_str().parse::<u64>().unwrap()),
+            };
+            Ok(unit)
+        }
+    }
 }
 
 fn remove_whitespace(s: &mut String) {
     s.retain(|c| !c.is_whitespace())
 }
 
-fn solve(data: Unit){
+fn solve(data: Unit) {
+    if data.a == 0.0 {
+        println!(
+            "The solution is:\n{:1.8}",
+            PrettyPrintFloat(-data.c / data.b)
+        );
+        return;
+    }
+
     let delta = data.b * data.b - 4.0 * data.a * data.c;
     if delta < 0.0 {
         println!("Discriminant is negative, there is no solution.");
     } else if delta == 0.0 {
-        println!("Discriminant is zero, the one solution is:\n{}", -data.b / (2.0 * data.a));
+        let solution = -data.b / (2.0 * data.a);
+        println!(
+            "Discriminant is zero, the one solution is:\n{:1.8}",
+            PrettyPrintFloat(solution)
+        );
     } else {
-        let solution1 = (-data.b + delta.sqrt())/ (2.0 * data.a);
-        let solution2 = (-data.b - delta.sqrt())/ (2.0 * data.a);
-        println!("Discriminant is strictly positive, the two solutions are:\n{}\n{}", solution1, solution2)
+        let solution1 = (-data.b + delta.sqrt()) / (2.0 * data.a);
+        let solution2 = (-data.b - delta.sqrt()) / (2.0 * data.a);
+        println!(
+            "Discriminant is strictly positive, the two solutions are:\n{:1.8}\n{:1.8}",
+            PrettyPrintFloat(solution1),
+            PrettyPrintFloat(solution2),
+        );
     }
 }
 
-fn main() {
-    assert!(0.00 ==  -0.0);
-    // let args: Vec<String> = env::args().collect();
-    // let mut input : String = args[1].to_string();
-    let mut input = "4 * X^1 - 9.3 * X^2= 1 * X^1".to_string();
-    // let mut input = "5 * X^0 + 4 * X^1 - 9.3 * X^2= 1 * X^0".to_string();
-    remove_whitespace(&mut input);
-    let data = reduce(input);
-    solve(data);
+fn usage(program: &str) {
+    println!(
+        "Usage: to solve a polynomial of degree 2 or less
+    ./{} \"5 * X^0 + 4 * X^1 - 9.3 * X^2 = 1 * X^0\"",
+        program
+    );
+}
+
+fn main()-> Result<(), &'static str> {
+    let args: Vec<String> = env::args().collect();
+    let program = args[0].clone();
+    match args.len() {
+        2 => {
+            let mut input: String = args[1].to_string();
+            remove_whitespace(&mut input);
+            let data = reduce(input)?;
+            solve(data);
+            Ok(())
+        }
+        _ => {
+            usage(&program);
+            Err("program need ONE argument!")
+        }
+    }
 }
