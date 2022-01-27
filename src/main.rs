@@ -2,120 +2,83 @@ use float_pretty_print::PrettyPrintFloat;
 use lazy_static::lazy_static;
 use regex::Regex;
 use std::env;
-use std::fmt;
-use std::vec;
+use std::collections::BTreeMap;
 
-// struct Unit {
-//     a: f64,
-//     b: f64,
-//     c: f64,
-//     other: u64,
-// }
-type Unit = Vec<f64>;
 
-// impl fmt::Display for Unit {
-//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-//         let expression: String = vec![(self[0], "* X^0"), (self[1], "* X^1"), (self[2], "* X^2")]
-//             .into_iter()
-//             .map(|(x, y)| {
-//                 if x == 0.0 {
-//                     "".to_string()
-//                 } else if x > 0.0 {
-//                     format!("+ {} {}", x.to_string(), y)
-//                 } else {
-//                     format!("- {} {}", (-x).to_string(), y)
-//                 }
-//             })
-//             .collect();
-//         write!(f, "{} = 0", expression.trim_start_matches("+ "),)
-//     }
-// }
+type Data = BTreeMap<u8, f64>;
 
-fn reduce(expression: String) -> Result<Unit, &'static str> {
+
+fn print_reduced(reduced: &Data){
+    let mut expression : String = String::new();
+    for (&key, &value) in reduced.iter(){
+        if value > 0.0 {
+            expression.push_str(&format!("+ {} * X^{} ", value.to_string(), key));
+        } else {
+            expression.push_str(&format!("- {} * X^{} ", (-value).to_string(), key));
+        }
+    }
+    println!("Reduced form: {} = 0", expression.trim_start_matches("+ "));
+}
+
+fn reduce(expression: String) -> Result<Data, &'static str> {
     let (left, right) = match expression.split_once("=") {
         None => {
             panic!("Wrong input: No '=' in expression")
         }
         Some((x, y)) => (x.trim(), y.trim()),
     };
-    let left_unit = extract_coefficients(left)?;
-    let right_unit = extract_coefficients(right)?;
-    let reduced_unit:Unit = left_unit.iter().zip(right_unit.iter()).map(|(&left,&right)| left - right).collect();
-    // Unit {
-    //     a: left_unit.a - right_unit.a,
-    //     b: left_unit.b - right_unit.b,
-    //     c: left_unit.c - right_unit.c,
-    //     other: left_unit.other - right_unit.other,
-
-    // };
-    let degree = {
-        if reduced_unit[3] != 0.0 {
-            reduced_unit[3] as u8
-        } else if reduced_unit[2] != 0.0 {
-            2
-        } else if reduced_unit[1] != 0.0 {
-            1
+    let mut left_data = extract_coefficients(left)?;
+    let right_data = extract_coefficients(right)?;
+    for (key, value) in right_data {
+        if let Some(x) = left_data.get_mut(&key) {
+            *x -= value;
         } else {
-            0
+            left_data.insert(key, -value);
         }
-    };
 
-    println!(
-        "Reduced form: {:?}\nPolynomial degree: {}",
-        reduced_unit, degree
-    );
+    }
+    let reduced = left_data;
+    let degree = match reduced.keys().max(){
+        None => return Err("No power in expression"),
+        Some(x) => *x,
+    };
+    print_reduced(&reduced);
+
     if degree > 2 {
         return Err("The polynomial degree is stricly greater than 2, I can't solve.");
+    } else {
+        println!(
+            "Polynomial degree: {}",
+            degree
+        );
     }
-    Ok(reduced_unit)
+    Ok(reduced)
 }
 
-fn extract_coefficients(expression: &str) -> Result<Unit, &'static str> {
+fn extract_coefficients(expression: &str) -> Result<Data, &'static str> {
     lazy_static! {
-        static ref RE: Regex = Regex::new(
-            r#"(?x)
-            ^
-            ((?P<c>[-]?\d+\.?\d*)[*]X\^0)?
-            ((?P<b>[+-]?\d+\.?\d*)[*]X\^1)?
-            ((?P<a>[+-]?\d+\.?\d*)[*]X\^2)?
-            ([+-]?\d+\.?\d*[*]X\^(?P<other>\d+))?
-            $
-            "#
-        )
+        static ref RE: Regex = Regex::new(r#"([+-]?\d+\.?\d*)[*]X\^(\d{1,2})"#)
         .unwrap();
     }
-    match RE.captures(expression) {
-        None => Err("wrong expression, nothing captured"),
-        Some(caps) => {
-            let unit:Unit = vec![
-                caps.name("c")
-                    .map_or(0.0, |m| m.as_str().parse::<f64>().unwrap()),
-                caps.name("b")
-                    .map_or(0.0, |m| m.as_str().parse::<f64>().unwrap()),
-                caps.name("a")
-                    .map_or(0.0, |m| m.as_str().parse::<f64>().unwrap()),
-                caps.name("other")
-                    .map_or(0.0, |m| m.as_str().parse::<f64>().unwrap()),
-            ];
-            // let unit = Unit {
-            //     c: caps.name("c").map_or(0.0, |m| m.as_str().parse::<f64>().unwrap()),
-            //     b: caps.name("b").map_or(0.0, |m| m.as_str().parse::<f64>().unwrap()),
-            //     a: caps.name("a").map_or(0.0, |m| m.as_str().parse::<f64>().unwrap()),
-            //     other: caps.name("other").map_or(0, |m| m.as_str().parse::<u64>().unwrap()),
-            // };
-            Ok(unit)
+    let caps = RE.captures_iter(expression);
+    let mut data :Data = BTreeMap::new();
+    for cap in caps{
+        match data.insert(cap[2].parse::<u8>().unwrap(), cap[1].parse::<f64>().unwrap()) {
+            None => continue,
+            _ => return Err("Wrong format: Duplicate coefficant is not allowed"),
         }
     }
+    Ok(data)
 }
 
 fn remove_whitespace(s: &mut String) {
     s.retain(|c| !c.is_whitespace())
 }
 
-fn solve(data: Unit) {
-    let c = data[0];
-    let b = data[1];
-    let a = data[2];
+fn solve(data: Data) {
+    let &c = data.get(&0).unwrap_or(&0.0);
+    let &b = data.get(&1).unwrap_or(&0.0);
+    let &a = data.get(&2).unwrap_or(&0.0);
     if a == 0.0 {
         println!(
             "The solution is:\n{:1.8}",
@@ -159,7 +122,7 @@ fn main() -> Result<(), &'static str> {
         2 => {
             let mut input: String = args[1].to_string();
             remove_whitespace(&mut input);
-            let data = reduce(input)?;
+            let data: Data = reduce(input)?;
             solve(data);
             Ok(())
         }
