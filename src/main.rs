@@ -15,7 +15,7 @@ fn print_reduced(reduced: &Data) {
             expression.push_str(&format!("+ {} * X^{} ", value.to_string(), key));
         }
     }
-    println!("Reduced form: {} = 0", expression.trim_start_matches("+ "));
+    println!("Reduced form: {}= 0", expression.trim_start_matches("+ "));
 }
 
 fn reduce(expression: String) -> Result<Data, &'static str> {
@@ -23,7 +23,8 @@ fn reduce(expression: String) -> Result<Data, &'static str> {
         None => {
             panic!("Wrong input: No '=' in expression")
         }
-        Some((x, y)) => (x.trim(), y.trim()),
+        Some((x, y)) => (x, y),
+        // Some((x, y)) => (x.trim(), y.trim()),
     };
     let mut left_data = extract_coefficients(left)?;
     let right_data = extract_coefficients(right)?;
@@ -59,7 +60,7 @@ fn extract_coefficients(expression: &str) -> Result<Data, &'static str> {
     let mut data: Data = BTreeMap::new();
     let first_cap = FIRST.captures(expression);
     let stop_point = match first_cap {
-        None => return Err("Wrong format in the first element"),
+        None => return Err("Wrong format"),
         Some(cap) => {
             let mat1 = cap.get(1).unwrap();
             let mat2 = cap.get(2).unwrap();
@@ -74,7 +75,7 @@ fn extract_coefficients(expression: &str) -> Result<Data, &'static str> {
     while !new_s.is_empty() {
         let caps = AFTER.captures(new_s);
         let stop_point = match caps {
-            None => {return Err("Wrong format in after element")},
+            None => {return Err("Wrong format")},
             Some(cap) => {
                 let mat1 = cap.get(1).unwrap();
                 let mat2 = cap.get(2).unwrap();
@@ -95,9 +96,14 @@ fn remove_whitespace(s: &mut String) {
 }
 
 fn solve(data: Data) {
+    if data.len() == 1 && data.values().next().unwrap() == &0.0 {
+        println!("All real number is the solution");
+        return;
+    }
     let &c = data.get(&0).unwrap_or(&0.0);
     let &b = data.get(&1).unwrap_or(&0.0);
     let &a = data.get(&2).unwrap_or(&0.0);
+    println!("data:{:?} | {} {} {}", data, c, b, a);
     if a == 0.0 {
         println!("The solution is:\n{:1.8}", PrettyPrintFloat(-c / b));
         return;
